@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>数を日本語に</title>
+<meta name="description" content="99999999 が何億何万か、入力した瞬間に分かる。漢数字・全角・指数・単位付きもそのまま貼れます。">
+<meta name="theme-color" content="#FCFBF8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#16150F" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='28'>万</text></svg>">
+<style>
+  :root {
+    --bg: #FCFBF8;
+    --ink: #1B1815;
+    --accent: #B4531F;
+    --rule: rgba(27, 24, 21, .12);
+    --field: #FFFFFF;
+    --danger: #A62B1F;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16150F;
+      --ink: #ECE7DD;
+      --accent: #F0A06A;
+      --rule: rgba(236, 231, 221, .14);
+      --field: #1F1E17;
+      --danger: #F08878;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", system-ui, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  main {
+    max-width: 40rem;
+    margin: 0 auto;
+    padding: clamp(1.5rem, 6vw, 3.5rem) 1rem 3rem;
+  }
+
+  h1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+
+  #q {
+    width: 100%;
+    font: inherit;
+    font-size: 28px;
+    font-variant-numeric: tabular-nums;
+    padding: .55em .6em;
+    color: var(--ink);
+    background: var(--field);
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    outline-offset: 3px;
+  }
+  #q::placeholder { color: var(--ink); opacity: .26; }
+  #q::-webkit-search-decoration { appearance: none; }
+
+  #echo {
+    margin: .6rem .2rem .2rem;
+    min-height: 1.4em;
+    font-size: 13px;
+    line-height: 1.4;
+    opacity: .55;
+    overflow-wrap: anywhere;
+  }
+  #echo.bad { opacity: 1; color: var(--danger); }
+  #echo mark { background: none; color: var(--danger); border-bottom: 2px solid currentColor; }
+  #echo .src { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; opacity: .8; }
+
+  .cards { display: grid; gap: 10px; transition: opacity .12s; }
+  .cards.stale { opacity: .35; }
+
+  .v {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 56px;
+    padding: .7rem .95rem;
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    background: var(--field);
+    cursor: pointer;
+    outline-offset: 3px;
+    transition: background .12s, border-color .12s;
+  }
+  .v .val { min-width: 0; overflow-wrap: anywhere; }
+  .v .act { flex: none; font-size: 12px; opacity: .5; white-space: nowrap; }
+  .v:hover, .v:focus-visible { border-color: var(--accent); }
+  .v:hover .act, .v:focus-visible .act { opacity: 1; color: var(--accent); }
+  .v:active { background: color-mix(in srgb, var(--accent) 10%, var(--field)); }
+
+  /* 序列は文字の大きさだけで付ける。枠まで変えると「押せるもの」の仲間に見えなくなる */
+  #hero { min-height: 104px; padding: .9rem .95rem; }
+  #hero .val {
+    font-size: clamp(30px, 8.4vw, 62px);
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -.015em;
+    font-variant-numeric: tabular-nums;
+  }
+  #hero .val i {
+    font-style: normal;
+    font-size: .56em;
+    font-weight: 500;
+    color: var(--accent);
+    margin: 0 .05em;
+  }
+  #hero .val .note { font-size: 17px; font-weight: 400; opacity: .6; }
+
+  #grouped .val {
+    font-size: 21px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  #english .val { font-size: 18px; line-height: 1.5; }
+
+  #hint { font-size: 15px; font-weight: 400; line-height: 1.9; opacity: .5; letter-spacing: 0; }
+  #hint b { font-weight: inherit; border-bottom: 1px dotted currentColor; cursor: pointer; white-space: nowrap; }
+  #hint .tail { white-space: nowrap; }
+
+  /* 値が無いとき: 主役の枠を外してヒントだけを置く */
+  .empty #grouped, .empty #english, .blank #grouped, .blank #english { display: none; }
+  .empty #echo { opacity: 0; min-height: 0; margin: .2rem 0 0; }
+  .empty #hero, .blank #hero {
+    min-height: 0;
+    border-color: transparent;
+    background: none;
+    cursor: default;
+  }
+  .empty #hero .act, .blank #hero .act { display: none; }
+
+  footer { margin-top: 2.5rem; font-size: 11px; opacity: .38; }
+  footer a { color: inherit; }
+
+  #toast {
+    position: fixed;
+    left: 50%;
+    bottom: 1.5rem;
+    transform: translate(-50%, .6rem);
+    background: var(--ink);
+    color: var(--bg);
+    font-size: 13px;
+    padding: .55em 1.1em;
+    border-radius: 999px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .15s, transform .15s;
+  }
+  #toast.on { opacity: .95; transform: translate(-50%, 0); }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body class="empty">
+<main>
+  <h1>数を日本語の読みやすい表記に変換する</h1>
+
+  <input id="q" type="search" placeholder="99999999"
+         autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+         enterkeyhint="done" aria-label="数を入力">
+
+  <p id="echo"></p>
+
+  <div class="cards" id="cards">
+    <div class="v" id="hero" tabindex="0" role="button">
+      <span class="val"></span><span class="act">⧉ コピー</span>
+    </div>
+    <div class="v" id="grouped" tabindex="0" role="button">
+      <span class="val"></span><span class="act">⧉ コピー</span>
+    </div>
+    <div class="v" id="english" tabindex="0" role="button">
+      <span class="val"></span><span class="act">⧉ コピー</span>
+    </div>
+  </div>
+
+  <footer><a href="https://github.com/S-Nakamur-a/number-to-japanese">ソースと表記の根拠</a></footer>
+</main>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script type="module">
+import { parse, formatAll, BIG_UNIT_RE } from './src/convert.js';
+
+const q = document.getElementById('q');
+const echo = document.getElementById('echo');
+const hero = document.getElementById('hero');
+const cards = document.getElementById('cards');
+const toast = document.getElementById('toast');
+
+const HINT = '<span id="hint"><b>五百万</b> ・ <b>1.2億</b> ・ <b>1e8</b> ・ <b>5M</b> <span class="tail">も読めます</span></span>';
+
+const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+
+function put(id, text, html) {
+  const el = document.getElementById(id);
+  el.dataset.raw = text;
+  el.querySelector('.val').innerHTML = html ?? esc(text);
+}
+
+let showingResult = false;
+
+function render(raw) {
+  cards.classList.remove('stale');
+
+  if (raw.trim() === '') {
+    document.body.className = 'empty';
+    put('hero', '', HINT);
+    showingResult = false; // ここで戻さないと、次のエラーが empty 状態に隠れる
+    document.title = '数を日本語に';
+    return;
+  }
+
+  const result = parse(raw);
+  if (!result.ok) {
+    const { start, end } = result.span;
+    echo.className = 'bad';
+    echo.innerHTML = `<span class="src">${esc(raw.slice(0, start))}<mark>${esc(raw.slice(start, end)) || '␣'}</mark>${esc(raw.slice(end))}</span> ← ${esc(result.message)}`;
+    if (showingResult) {
+      document.body.className = '';
+      cards.classList.add('stale'); // 空白への急変は「壊れた」と誤認させる
+    } else {
+      document.body.className = 'blank';
+      put('hero', '', HINT);
+    }
+    return;
+  }
+
+  showingResult = true;
+  document.body.className = '';
+  const a = formatAll(result.value);
+
+  // 解釈が自明でないときだけ伝える。カンマの位置を直しただけなら下のカードが答えている
+  echo.className = '';
+  echo.textContent = result.warnings.map((w) => w.message).join(' ・ ');
+
+  put('hero', a.mixed ?? a.grouped, a.mixed === null
+    ? '<span class="note">無量大数を超えるので命数法では表せません</span>'
+    : esc(a.mixed).replace(BIG_UNIT_RE, '<i>$1</i>'));
+  put('grouped', a.grouped);
+  put('english', a.english);
+
+  document.title = `${a.mixed ?? a.grouped} — 数を日本語に`;
+}
+
+let syncTimer;
+function onInput() {
+  render(q.value);
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => {
+    const url = new URL(location.href); // 他のクエリとフラグメントを捨てない
+    if (q.value.trim() === '') url.searchParams.delete('n');
+    else url.searchParams.set('n', q.value);
+    history.replaceState(null, '', url); // pushState は戻るボタンを打鍵ぶん埋めてしまう
+  }, 300);
+}
+
+let toastTimer;
+async function copy(el) {
+  const text = el.dataset.raw;
+  if (!text || !getSelection().isCollapsed) return; // 長押しでの範囲選択を奪わない
+  let message = cards.classList.contains('stale') ? '1つ前の結果をコピーしました' : 'コピーしました';
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    message = 'コピーできませんでした';
+  }
+  toast.textContent = message;
+  toast.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('on'), 1400);
+}
+
+document.addEventListener('click', (e) => {
+  const example = e.target.closest('#hint b');
+  if (example) {
+    q.value = example.textContent;
+    onInput();
+    q.focus();
+    return;
+  }
+  const cell = e.target.closest('.v');
+  if (cell) copy(cell);
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (e.target !== q) return;
+    // 既定の Escape は IME 変換中でもフィールドごと消し、確定済みの文字まで失わせる
+    e.preventDefault();
+    if (e.isComposing) return;
+    q.value = '';
+    onInput();
+    return;
+  }
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('v')) {
+    e.preventDefault();
+    copy(e.target);
+  }
+});
+
+q.addEventListener('input', onInput);
+q.addEventListener('keydown', (e) => e.key === 'Enter' && q.blur());
+
+// 毎回 select すると打ち直しの編集を邪魔する
+let firstFocus = true;
+q.addEventListener('focus', () => {
+  if (firstFocus && q.value) q.select();
+  firstFocus = false;
+});
+
+q.value = new URLSearchParams(location.search).get('n') ?? '';
+render(q.value);
+// モバイルで autofocus するとキーボードが主役を覆い、閉じる操作が増える
+if (matchMedia('(pointer: fine)').matches) q.focus();
+</script>
+</body>
+</html>
